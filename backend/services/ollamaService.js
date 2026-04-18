@@ -3,17 +3,34 @@ export const generateLLMResponse = async ({
 }) => {
   try {
     const pubSection = publications.slice(0, 6).map((p, i) => {
-      const abstract = (p.abstract || 'No abstract').slice(0, 300)
-      return `[PUB ${i + 1}] "${p.title}" by ${p.authors || 'Unknown'} (${p.year || 'N/A'}) - ${abstract}`
-    }).join('\n')
+      const abstract = (p.abstract || 'No abstract').slice(0, 400)
+      return `[PUB ${i + 1}] "${p.title}" by ${p.authors || 'Unknown'} (${p.year || 'N/A'}, ${p.source})\nAbstract: ${abstract}`
+    }).join('\n\n')
 
     const trialSection = trials.slice(0, 4).map((t, i) =>
-      `[TRIAL ${i + 1}] "${t.title}" | Status: ${t.status} | Location: ${t.location}`
-    ).join('\n')
+      `[TRIAL ${i + 1}] "${t.title}" | Status: ${t.status} | Phase: ${t.phase} | Location: ${t.location}`
+    ).join('\n\n')
 
-    const prompt = `You are Curalink, a medical research assistant. Answer based ONLY on the provided research.
+    const historyText = conversationHistory.slice(-4)
+      .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 150)}`)
+      .join('\n')
 
-Patient: ${patientName || 'Patient'} | Disease: ${disease} | Question: ${query}
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'llama3-8b-8192',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are Curalink, an expert AI medical research assistant. Always respond in the exact structured format requested. Be specific, cite sources, and provide personalized insights.'
+          },
+          {
+            role: 'user',
+            content: `Patient: ${patientName || 'Patient'} | Disease: ${disease} | Query: ${query}
 
 RESEARCH PUBLICATIONS:
 ${pubSection || 'No publications available.'}
@@ -21,74 +38,38 @@ ${pubSection || 'No publications available.'}
 CLINICAL TRIALS:
 ${trialSection || 'No trials available.'}
 
-Respond in exactly this format:
+${historyText ? `CONVERSATION HISTORY:\n${historyText}` : ''}
+
+Respond in EXACTLY this format:
 
 ## Condition Overview
-Write 2-3 sentences explaining ${disease} clearly.
+[2-3 sentences explaining ${disease} clearly for ${patientName || 'the patient'}]
 
 ## Research Insights
-List 3-5 specific findings from publications above. Cite as [PUB 1], [PUB 2] etc.
+[3-5 specific findings from publications above. Always cite [PUB 1], [PUB 2] etc. Be specific about treatment names, statistics, breakthroughs.]
 
 ## Clinical Trial Findings
-Describe 2-3 relevant trials from the list. Mention status and what they test.
+[Describe 2-3 relevant trials. Mention status, what they test, and eligibility for ${patientName || 'the patient'}.]
 
 ## Key Takeaway
-Write 1-2 sentences of advice for ${patientName || 'the patient'} based on the evidence.`
-
-    console.log('Calling HuggingFace API...')
-
-    const response = await fetch(
-      'https://router.huggingface.co/hf-inference/models/mistralai/Mistral-7B-Instruct-v0.1',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.HF_TOKEN}`,
-          'Content-Type': 'application/json',
-          'x-use-cache': 'false'
-        },
-        body: JSON.stringify({
-          inputs: `<s>[INST] ${prompt} [/INST]`,
-          parameters: {
-            max_new_tokens: 600,
-            temperature: 0.3,
-            return_full_text: false,
-            do_sample: true
+[1-2 sentences of personalized, actionable advice for ${patientName || 'the patient'} based strictly on the evidence above.]`
           }
-        })
-      }
-    )
+        ],
+        temperature: 0.3,
+        max_tokens: 1000
+      })
+    })
 
-    const text = await response.text()
-    console.log('HF Status:', response.status)
-    console.log('HF Raw:', text.slice(0, 300))
+    const data = await response.json()
+    console.log('Groq status:', response.status)
 
-    // HTML error check
-    if (text.includes('<!DOCTYPE') || text.includes('<html')) {
-      console.error('Got HTML response - wrong endpoint or model unavailable')
-      return generateFallbackResponse(disease, query, patientName, publications, trials)
-    }
-
-    let data
-    try {
-      data = JSON.parse(text)
-    } catch (e) {
-      console.error('JSON parse failed:', text.slice(0, 100))
-      return generateFallbackResponse(disease, query, patientName, publications, trials)
-    }
-
-    // Model loading
     if (data.error) {
-      console.error('HF API Error:', data.error)
-      if (data.error.includes('loading') || data.estimated_time) {
-        return generateFallbackResponse(disease, query, patientName, publications, trials)
-      }
+      console.error('Groq error:', data.error)
       return generateFallbackResponse(disease, query, patientName, publications, trials)
     }
 
-    // Success
-    if (Array.isArray(data) && data[0]?.generated_text) {
-      return data[0].generated_text
-    }
+    const content = data.choices?.[0]?.message?.content
+    if (content) return content
 
     return generateFallbackResponse(disease, query, patientName, publications, trials)
 
@@ -98,7 +79,6 @@ Write 1-2 sentences of advice for ${patientName || 'the patient'} based on the e
   }
 }
 
-// Fallback — jab bhi model unavailable ho, yeh structured response dega
 function generateFallbackResponse(disease, query, patientName, publications, trials) {
   const name = patientName || 'the patient'
   const pubList = publications.slice(0, 5).map((p, i) =>
@@ -110,22 +90,16 @@ function generateFallbackResponse(disease, query, patientName, publications, tri
   ).join('\n')
 
   return `## Condition Overview
-${disease} is a serious medical condition that requires personalized treatment based on individual patient factors. Current research is actively exploring new therapeutic approaches to improve patient outcomes.
+${disease} is a medical condition requiring personalized treatment. Current research is actively exploring new therapeutic approaches.
 
 ## Research Insights
-Based on the retrieved publications, here are key findings related to ${disease} and "${query}":
-
-${pubList || '- No publications retrieved for this query.'}
-
-These studies highlight the importance of evidence-based treatment approaches and ongoing research in this area.
+Key findings related to ${disease}:
+${pubList || '- No publications retrieved.'}
 
 ## Clinical Trial Findings
-The following clinical trials are currently recruiting patients related to ${disease}:
-
-${trialList || '- No clinical trials found for this query.'}
-
-Patients interested in participating should review eligibility criteria and contact the trial coordinators.
+Active trials related to ${disease}:
+${trialList || '- No trials found.'}
 
 ## Key Takeaway
-Based on current research, ${name} should consult with a specialist to discuss the latest treatment options for ${disease}. The publications and clinical trials above provide a strong foundation for evidence-based decision making.`
+${name} should consult a specialist to discuss the latest evidence-based treatment options for ${disease}.`
 }
