@@ -9,20 +9,22 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 5000
 
-// MongoDB connect karo
 connectDB()
 
-// Middleware
+// ✅ CORS fix — OPTIONS preflight handle karo
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
-  credentials: true
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],  // OPTIONS add kiya
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
+
+// ✅ Preflight requests ke liye explicitly handle karo
+app.options('*', cors())  // ← Yeh line add karo
+
 app.use(express.json())
 
-// Routes
 app.use('/api/chat', chatRoutes)
 
-// Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Curalink backend is running!', timestamp: new Date().toISOString() })
 })
