@@ -56,7 +56,7 @@ export const generateLLMResponse = async ({
     const prompt = buildPrompt({ disease, query, patientName, publications, trials, conversationHistory })
 
     const response = await fetch(
-      'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1',
+      'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1/generate',
       {
         method: 'POST',
         headers: {
