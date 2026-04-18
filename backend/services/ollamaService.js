@@ -1,7 +1,7 @@
 import { HfInference } from '@huggingface/inference'
 
 const hf = new HfInference(process.env.HF_TOKEN)
-const MODEL = 'mistralai/Mistral-7B-Instruct-v0.3'
+const MODEL = 'HuggingFaceH4/zephyr-7b-beta'
 
 const buildPrompt = ({ disease, query, patientName, publications, trials, conversationHistory }) => {
   const pubSection = publications.slice(0, 6).map((p, i) => {
