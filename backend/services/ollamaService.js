@@ -90,7 +90,7 @@ export const generateLLMResponse = async ({
     return 'Unable to generate response. Please try again.'
 
   } catch (error) {
-    console.error('HuggingFace error:', error.message)
+    console.error('HuggingFace error:', error.message, error.status, JSON.stringify(error))
 
     // Rate limit
     if (error.message?.includes('429') || error.message?.includes('rate limit')) {
