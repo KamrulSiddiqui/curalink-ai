@@ -75,20 +75,31 @@ export const generateLLMResponse = async ({
       }
     )
 
-    const data = await response.json()
-    console.log('HF Raw Response:', JSON.stringify(data).slice(0, 300))
+    const text = await response.text()
+    console.log('HF Raw Response:', text.slice(0, 300))
 
-    // Model loading
-    if (data.error?.includes('loading') || data.error?.includes('currently loading')) {
-      return '**Model is warming up** — please wait 20 seconds and try again.'
+    if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+      return '**Model is loading** — please wait 30 seconds and try again.'
     }
 
-    // Success
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch (e) {
+      console.error('JSON parse error:', text.slice(0, 200))
+      return 'Unable to parse model response. Please try again.'
+    }
+
+    if (data.error?.includes('loading') || data.error?.includes('currently loading')) {
+      return '**Model is warming up** — please wait 30 seconds and try again.'
+    }
+
     if (Array.isArray(data) && data[0]?.generated_text) {
       return data[0].generated_text
     }
 
-    return 'Unable to generate response. Please try again in a moment.'
+    console.error('Unexpected response:', JSON.stringify(data).slice(0, 200))
+    return 'Unable to generate response. Please try again.'
 
   } catch (error) {
     console.error('HuggingFace error:', error.message)
